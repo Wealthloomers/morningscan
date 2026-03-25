@@ -184,6 +184,20 @@ def results():
     }
 
 
+@app.get("/universe")
+def universe_list():
+    """Return the current scan universe — full ticker list, count, and source."""
+    tickers      = get_universe()
+    cache_meta   = get_cache_metadata()
+    is_from_cache = cache_meta.get("built_at") is not None and cache_meta.get("count", 0) > 0
+    return {
+        "tickers":    sorted(tickers),
+        "count":      len(tickers),
+        "source":     "dynamic_cache" if is_from_cache else "static_fallback",
+        "cache_meta": cache_meta,
+    }
+
+
 @app.post("/scan")
 async def trigger_scan(
     x_api_key: str = Header(default=""),

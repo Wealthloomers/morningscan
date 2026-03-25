@@ -344,6 +344,7 @@ export default function App() {
         *{box-sizing:border-box;margin:0;padding:0}
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes up{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes scanSlide{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-thumb{background:${T.borderMid};border-radius:2px}
         input[type=number]::-webkit-inner-spin-button{opacity:0.4}
@@ -474,8 +475,8 @@ export default function App() {
             {LISTS.map((l,i) => (
               <div key={l.key} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
                 <span style={{ fontSize:10, width:68, flexShrink:0, fontFamily:"monospace", color:T.textMuted }}>{l.tag}</span>
-                <div style={{ flex:1, height:4, background:T.bgAlt, borderRadius:2, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-                  <div style={{ width:["68%","55%","74%","62%"][i], height:"100%", background:l.color, borderRadius:2, opacity:0.45 }} />
+                <div style={{ flex:1, height:4, background:T.bgAlt, borderRadius:2, border:`1px solid ${T.border}`, overflow:"hidden", position:"relative" }}>
+                  <div style={{ position:"absolute", top:0, left:0, width:"40%", height:"100%", background:`linear-gradient(90deg, transparent, ${l.color}, transparent)`, borderRadius:2, opacity:0.6, animation:`scanSlide ${[1.8, 2.2, 1.6, 2.0][i]}s ease-in-out infinite`, animationDelay:`${i * 0.2}s` }} />
                 </div>
               </div>
             ))}

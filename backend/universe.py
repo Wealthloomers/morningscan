@@ -1,170 +1,114 @@
 """
-Universe loader.
-Priority order:
-  1. universe_cache.json  — built by universe_builder.py weekly
-  2. STATIC_UNIVERSE      — curated fallback (~476 tickers) used on first run
-                            before any cache exists
+Universe loader — the single source of truth for which tickers to scan.
 
-The daily scanner always calls get_universe() which handles the priority logic.
+Priority order:
+  1. Dynamic cache (universe_cache.json) — built weekly by universe_builder.py
+  2. Static fallback list below — used only on first deployment before any
+     universe refresh has run
+
+Both main.py and scanner.py import from this file:
+  - main.py uses get_universe() for the /scan endpoint and /status
+  - scanner.py uses UNIVERSE as the default when tickers=None
+
+Compatible with Python 3.9+.
 """
 
 import logging
-from typing import List
 from universe_builder import load_cached_universe
 
 logger = logging.getLogger(__name__)
 
-# ── Static fallback universe (~476 tickers) ───────────────────────────────────
-# Used only if no cache file exists (first deployment, before first weekly refresh).
-# After the first universe refresh this list is no longer used.
+# ── Static fallback universe ──────────────────────────────────────────────────
+# Used only when universe_cache.json does not exist or is corrupted.
+# This list was the original hand-curated set of ~473 liquid US names.
+# Once the first weekly universe refresh completes, this list is never used
+# again unless the cache file is deleted.
 
 STATIC_UNIVERSE = [
-    # Mega-cap tech
-    "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA",
-    "AVGO", "ORCL", "ADBE", "CRM", "NOW", "INTU", "SNPS", "CDNS",
-    # Semiconductors
-    "AMD", "INTC", "QCOM", "TXN", "MU", "AMAT", "LRCX", "KLAC",
-    "MRVL", "MCHP", "ON", "SWKS", "MPWR", "SMCI", "ARM", "ASML",
-    # Cloud / SaaS / Internet
-    "PANW", "CRWD", "ZS", "FTNT", "NET", "DDOG", "SNOW", "PLTR",
-    "COIN", "MSTR", "UBER", "LYFT", "ABNB", "DASH", "RBLX", "HOOD",
-    "SHOP", "SPOT", "PINS", "SNAP", "ROKU", "TWLO", "OKTA", "ZM",
-    "MDB", "GTLB", "PATH",
-    # Large-cap tech / hardware
-    "IBM", "HPE", "HPQ", "DELL", "STX", "WDC", "ANET", "CSCO", "JNPR",
-    # Financials — Banks
-    "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "TFC",
-    "CFG", "FITB", "KEY", "RF", "HBAN", "MTB",
-    # Financials — Investment / Insurance / Payments
-    "BLK", "BX", "KKR", "APO", "SCHW", "AXP", "COF", "DFS", "SYF",
-    "V", "MA", "PYPL", "SQ", "FI", "FIS", "GPN",
-    "AIG", "MET", "PRU", "AFL", "ALL", "TRV", "CB", "HIG",
-    # Healthcare — Large-cap pharma
-    "JNJ", "PFE", "MRK", "ABBV", "LLY", "BMY", "AZN", "NVO", "GSK",
-    # Healthcare — Biotech
-    "AMGN", "GILD", "BIIB", "REGN", "VRTX", "MRNA", "BNTX",
-    "ALNY", "IONS", "INCY", "EXEL", "ARWR", "SGEN",
-    # Healthcare — Managed care / devices
-    "UNH", "CVS", "CI", "HUM", "CNC", "ELV",
-    "MDT", "ABT", "SYK", "BSX", "ZBH", "DXCM", "ISRG", "EW", "BDX", "RMD",
-    # Consumer — Staples
-    "PG", "KO", "PEP", "PM", "MO", "MDLZ", "KHC", "GIS",
-    "CLX", "CL", "CHD", "KMB", "EL", "HSY",
-    # Consumer — Discretionary / Retail
-    "WMT", "TGT", "COST", "HD", "LOW", "BBY", "DG", "DLTR", "ROST", "TJX",
-    "NKE", "LULU", "PVH", "RL", "TPR",
-    "MCD", "SBUX", "CMG", "YUM", "DPZ", "QSR",
-    "DIS", "NFLX", "WBD", "PARA", "LYV",
-    "AZO", "ORLY", "GPC",
-    # Autos
-    "F", "GM", "RIVN", "LCID",
-    # Airlines / Travel / Leisure
-    "AAL", "DAL", "UAL", "LUV",
-    "NCLH", "CCL", "RCL",
-    "MGM", "WYNN", "LVS", "PENN", "DKNG",
-    # Energy — E&P
-    "XOM", "CVX", "COP", "OXY", "EOG", "DVN", "FANG", "APA", "HES", "MRO",
-    "EQT", "AR", "RRC",
-    # Energy — Services / Midstream / Refining
-    "SLB", "HAL", "BKR", "MPC", "PSX", "VLO", "KMI", "WMB", "ET",
-    # Industrials — Defense
-    "BA", "LMT", "RTX", "NOC", "GD", "LDOS", "SAIC",
-    # Industrials — Machinery / Conglomerates
-    "CAT", "DE", "CMI", "PH", "EMR", "ETN", "ROK", "AME", "GNRC",
-    "GE", "HON", "MMM", "ITW", "DOV", "XYL",
-    # Industrials — Transport / Logistics
-    "UNP", "CSX", "NSC", "UPS", "FDX", "JBHT", "CHRW",
-    # Materials
-    "LIN", "APD", "SHW", "ECL", "PPG",
-    "NEM", "AEM", "WPM", "GOLD", "FCX", "AA", "ALB", "MP",
-    # Real Estate
-    "AMT", "CCI", "SBAC", "PLD", "EQIX", "DLR", "IRM",
-    "O", "VICI", "GLPI", "SPG", "KIM", "REG",
-    "EQR", "AVB", "ESS", "MAA", "PSA", "EXR",
-    "VTR", "WELL", "MPW",
-    # Utilities
-    "NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "PCG",
-    "XEL", "WEC", "ETR", "CEG", "VST", "NRG",
-    # Communications
-    "T", "VZ", "TMUS", "CHTR", "CMCSA",
-    # Chinese / International ADRs
-    "BABA", "JD", "PDD", "BIDU", "NIO", "LI", "XPEV",
-    "TCOM", "SE", "MELI", "NU",
-    # Broad market ETFs
-    "SPY", "QQQ", "IWM", "DIA", "VOO", "VTI", "RSP",
-    # Factor / style ETFs
-    "VTV", "VUG", "IWF", "IWD", "MTUM", "USMV", "IJR",
-    # Sector ETFs
-    "XLF", "XLK", "XLE", "XLV", "XLI", "XLY", "XLP",
-    "XLU", "XLB", "XLRE", "XLC",
-    "IBB", "XBI", "KBE", "KRE", "ITB", "XHB", "SMH",
-    "ARKK", "ARKG",
-    # International / Emerging ETFs
-    "EEM", "EFA", "FXI", "KWEB", "EWJ", "EWZ", "VEA", "VWO",
-    # Commodities
-    "GLD", "IAU", "SLV", "GDX", "GDXJ", "USO", "UNG", "PDBC", "COPX",
-    # Fixed income ETFs
-    "TLT", "TBT", "TMF", "IEF", "SHY", "HYG", "JNK", "LQD", "BND", "AGG",
-    # Leveraged / inverse ETFs
-    "TQQQ", "SQQQ", "SPXL", "SPXS", "SPXU",
-    "SOXL", "SOXS", "TNA", "TZA", "LABU", "LABD",
-    "ERX", "ERY", "NUGT", "DUST",
-    # Volatility products
-    "UVXY", "SVXY", "VXX",
-    # Misc
-    "BRK-B", "WBA", "VFC",
-    # Homebuilders
-    "LEN", "DHI", "PHM", "TOL",
-    # Clean energy
-    "FSLR", "ENPH", "SEDG", "RUN", "CHPT", "BLNK", "EVGO",
-    # Fintech
-    "SOFI", "AFRM", "UPST", "BILL", "HUBS", "PCTY", "PAYC", "VEEV",
-    # Ad tech / digital
-    "APP", "TTD", "MGNI", "MTCH", "BMBL", "ETSY",
-    # Genomics
-    "ILMN", "PACB", "NTRA", "RGEN", "TXG", "NVAX", "VXRT",
-    # Steel / metals
-    "CLF", "NUE", "STLD", "X",
-    # Chemicals
-    "CF", "MOS", "NTR", "FMC", "CE", "OLN",
-    # Hospitality / travel
-    "HLT", "MAR", "H", "WH", "BKNG", "EXPE",
-    # Industrial
-    "CARR", "OTIS", "TT", "JCI",
-    # Healthcare hospitals
-    "HCA", "THC", "UHS",
-    # Specialty REITs
-    "STAG", "COLD", "REXR", "SUI", "ELS", "AMH", "INVH",
-    # Utilities / pipelines
-    "OKE", "LNG", "CQP", "LNT", "EVRG", "PNW",
-    # Media
-    "FOXA", "FOX", "IAC",
-    # Misc large liquid
-    "W", "CHWY", "DNUT", "QSR", "MARA",
+    "AAPL", "ABBV", "ABNB", "ABT", "ACHR", "ACN", "ADBE", "ADI", "ADM",
+    "ADP", "ADSK", "AEM", "AES", "AFL", "AFRM", "AG", "AGCO", "AGI",
+    "AGIO", "AIG", "ALAB", "ALB", "ALC", "ALGN", "ALIT", "ALL", "AMAT",
+    "AMD", "AMGN", "AMP", "AMZN", "ANET", "ANSS", "APA", "APD", "APH",
+    "APLS", "APLT", "APP", "APPS", "APTV", "AR", "ARCC", "ARE", "ARES",
+    "ARKK", "ARM", "ARQT", "ASPN", "ASRT", "AVGO", "AVTR", "AVY", "AXP",
+    "BA", "BABA", "BAC", "BAX", "BBAI", "BBWI", "BCS", "BDX", "BE",
+    "BEKE", "BG", "BGRY", "BIDU", "BIIB", "BJ", "BK", "BKNG", "BKR",
+    "BLDR", "BLK", "BMO", "BMY", "BN", "BNS", "BOX", "BP", "BRKB",
+    "BSX", "BTU", "BUD", "BURL", "BWA", "BX", "BXP", "C", "CAH",
+    "CARR", "CAT", "CB", "CCI", "CCJ", "CCL", "CDAY", "CDNS", "CE",
+    "CEG", "CF", "CFG", "CFLT", "CG", "CHPT", "CHRW", "CI", "CL",
+    "CLF", "CLX", "CM", "CMA", "CMCSA", "CME", "CMG", "CMI", "CMS",
+    "CNC", "CNP", "COIN", "COP", "COST", "CPAY", "CPNG", "CPRT", "CRM",
+    "CRSP", "CRWD", "CSCO", "CSGP", "CTAS", "CTLT", "CTSH", "CTVA",
+    "CVE", "CVNA", "CVS", "CVX", "CZR", "D", "DAL", "DASH", "DDOG",
+    "DE", "DELL", "DFS", "DG", "DHI", "DHR", "DIA", "DIS", "DKNG",
+    "DLR", "DLTR", "DOCS", "DOW", "DRVN", "DT", "DTE", "DUK", "DVN",
+    "DXCM", "EA", "EBAY", "ECL", "ED", "EEM", "EFA", "EL", "EMB",
+    "EMR", "ENPH", "ENR", "EOG", "EPAM", "EPD", "EQIX", "EQR", "EQT",
+    "ERIE", "ES", "ESS", "ET", "ETN", "ETSY", "EW", "EWJ", "EWZ",
+    "EXAS", "EXC", "EXPD", "EXPE", "F", "FANG", "FAST", "FCEL", "FCX",
+    "FDX", "FE", "FERG", "FFIV", "FIS", "FISV", "FITB", "FIVE", "FL",
+    "FLR", "FLUT", "FMC", "FSLR", "FTNT", "FUBO", "FUTU", "FXI",
+    "GBTC", "GD", "GDDY", "GDX", "GDXJ", "GE", "GEHC", "GERN", "GEV",
+    "GFS", "GILD", "GIS", "GL", "GLW", "GM", "GNRC", "GOLD", "GOOGL",
+    "GPC", "GPN", "GRAB", "GRMN", "GS", "GWW", "HAL", "HAS", "HBAN",
+    "HCA", "HD", "HES", "HIG", "HIMS", "HLT", "HON", "HOOD", "HPE",
+    "HPQ", "HST", "HSY", "HUM", "HWM", "HYG", "IBKR", "IBM", "IBN",
+    "ICE", "ICLR", "IDXX", "IEF", "IEFA", "IEMG", "IFGL", "IGV",
+    "INCY", "INTC", "INTU", "INVH", "IONQ", "IP", "IPG", "IQV", "IR",
+    "ISRG", "IT", "ITES", "ITW", "IVV", "IWM", "IYR", "JAZZ", "JBL",
+    "JBLU", "JCI", "JD", "JNJ", "JNPR", "JPM", "JWN", "KDP", "KEY",
+    "KGC", "KHC", "KIM", "KLAC", "KMB", "KMI", "KO", "KR", "KRE",
+    "KVUE", "KWEB", "LABU", "LEN", "LIN", "LLY", "LMT", "LNTH", "LOW",
+    "LPLA", "LRCX", "LSCC", "LULU", "LUV", "LVS", "LW", "LYB", "LYV",
+    "MA", "MAA", "MAR", "MARA", "MCD", "MCHP", "MCK", "MCO", "MDLZ",
+    "MDT", "MDY", "MELI", "MET", "META", "MGM", "MKC", "MKTX", "MLM",
+    "MMC", "MMM", "MNST", "MO", "MOH", "MPLX", "MPC", "MPW", "MRK",
+    "MRNA", "MRVL", "MS", "MSCI", "MSFT", "MSI", "MSTR", "MT", "MTB",
+    "MTCH", "MTG", "MU", "NCLH", "NDAQ", "NDSN", "NEM", "NET", "NFLX",
+    "NI", "NIO", "NKE", "NLOK", "NOC", "NOW", "NRG", "NSC", "NTAP",
+    "NTES", "NTNX", "NU", "NUE", "NVDA", "NVST", "NVO", "NXPI", "O",
+    "ODFL", "OIH", "OKE", "OMC", "ON", "ORCL", "ORI", "OTIS", "OXY",
+    "PANW", "PARA", "PATH", "PAYC", "PAYX", "PBR", "PCAR", "PCG",
+    "PDD", "PEAK", "PEG", "PEP", "PFE", "PG", "PGR", "PH", "PHM",
+    "PINS", "PLD", "PLTR", "PM", "PNC", "PNR", "POOL", "PPG", "PPL",
+    "PSTG", "PSX", "PXD", "PYPL", "QCOM", "QQQ", "RBLX", "RCL",
+    "REGN", "RF", "RGEN", "RIG", "RIOT", "RIVN", "RKT", "RL", "ROKU",
+    "ROK", "ROL", "ROP", "ROST", "RPM", "RSP", "RTX", "RUN", "RVTY",
+    "RY", "S", "SAIA", "SBUX", "SCHW", "SE", "SEDG", "SHOP", "SHW",
+    "SHY", "SI", "SIRI", "SLB", "SLV", "SMCI", "SMH", "SN", "SNAP",
+    "SNPS", "SNY", "SO", "SOFI", "SOXX", "SPGI", "SPOT", "SPY",
+    "SQ", "SRE", "SSNC", "STAG", "STLA", "STM", "STNE", "STNG",
+    "STX", "STZ", "SU", "SUI", "SWK", "SWKS", "SYF", "SYK", "SYY",
+    "T", "TAL", "TBT", "TD", "TDG", "TDOC", "TEAM", "TECK", "TER",
+    "TFC", "TGT", "TJX", "TLT", "TMO", "TMUS", "TPR", "TRGP", "TRIP",
+    "TRMB", "TSLA", "TSM", "TSN", "TT", "TTD", "TTWO", "TUR", "TWLO",
+    "TXN", "TXT", "U", "UAL", "UBER", "UNH", "UNP", "UPS", "URI",
+    "USB", "V", "VALE", "VFC", "VICI", "VLO", "VMC", "VMW", "VNDA",
+    "VNO", "VRSN", "VRSK", "VRTX", "VST", "VTR", "VZ", "W", "WAB",
+    "WAT", "WBA", "WBD", "WDAY", "WDC", "WELL", "WFC", "WHR", "WM",
+    "WMB", "WMT", "WPM", "WST", "WY", "WYNN", "X", "XBI", "XHB",
+    "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV",
+    "XLY", "XME", "XMTR", "XOM", "XOP", "XP", "XPEV", "XRT", "XSP",
+    "XTLA", "YUM", "Z", "ZBH", "ZBRA", "ZIM", "ZION", "ZM", "ZS", "ZTO",
 ]
 
-# Deduplicate while preserving order
-_seen: set = set()
-STATIC_UNIVERSE = [t for t in STATIC_UNIVERSE if not (t in _seen or _seen.add(t))]
 
-
-def get_universe() -> List[str]:
+def get_universe():
     """
     Return the current scan universe.
-    Tries cache first, falls back to static list.
+
+    Tries the dynamic cache first (built weekly by universe_builder.py).
+    Falls back to the static list if no cache exists or cache is empty.
     """
     cached = load_cached_universe()
     if cached:
-        logger.info(f"Using cached universe: {len(cached)} tickers")
+        logger.info(f"Universe loaded from cache: {len(cached)} tickers")
         return cached
-    logger.info(
-        f"No universe cache found — using static fallback: "
-        f"{len(STATIC_UNIVERSE)} tickers. "
-        f"Run /refresh-universe to build a dynamic universe."
-    )
-    return list(STATIC_UNIVERSE)
+
+    logger.info(f"No universe cache found — using static fallback: {len(STATIC_UNIVERSE)} tickers")
+    return STATIC_UNIVERSE
 
 
-# Keep UNIVERSE as a module-level alias for backwards compatibility
-# (scanner.py imports UNIVERSE directly)
-UNIVERSE = get_universe()
+# Backward compatibility: scanner.py imports UNIVERSE directly as a fallback
+UNIVERSE = STATIC_UNIVERSE

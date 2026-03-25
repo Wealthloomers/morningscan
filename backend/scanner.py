@@ -23,7 +23,7 @@ from technical import (
     call_oi_skewed_at_resistance,
 )
 from scoring import StockData, build_all_lists
-from universe import UNIVERSE
+from universe import get_universe
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ async def run_scan(
             Falls back to SCAN_DEFAULTS for any missing key.
     """
     if tickers is None:
-        tickers = UNIVERSE
+        tickers = get_universe()
 
     # Merge user params with defaults — user values take precedence
     p = {**SCAN_DEFAULTS, **(params or {})}

@@ -302,7 +302,9 @@ export default function App() {
     setError(null); setLoading(true);
     try {
       const res = await fetch(`${API_URL}/scan`, {
-        method:"POST", headers:{ "Content-Type":"application/json", "X-Api-Key":apiKey },
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "X-Api-Key":apiKey },
+        body: JSON.stringify(params),
       });
       if (res.status === 401) { setError("Invalid API key. Enter your SCAN_API_KEY below."); setShowKeyInput(true); setLoading(false); return; }
       if (!res.ok) { const b = await res.json().catch(()=>{}); setError(b?.detail||`Server error ${res.status}`); setLoading(false); return; }
@@ -314,7 +316,9 @@ export default function App() {
     setRefreshing(true); setRefreshMsg(null);
     try {
       const res = await fetch(`${API_URL}/refresh-universe`, {
-        method:"POST", headers:{ "Content-Type":"application/json", "X-Api-Key":apiKey },
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "X-Api-Key":apiKey },
+        body: JSON.stringify(params),
       });
       if (res.status === 401) { setRefreshMsg("Invalid API key."); setShowKeyInput(true); setRefreshing(false); return; }
       const json = await res.json();

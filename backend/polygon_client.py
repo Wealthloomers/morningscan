@@ -142,7 +142,7 @@ async def get_iv_rank(
 
     for opt in chain:
         details = opt.get("details") or {}
-        iv      = details.get("implied_volatility")
+        iv      = opt.get("implied_volatility")
         if not iv or iv <= 0:
             continue
         all_ivs.append(iv)

@@ -21,6 +21,10 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from urllib.parse import urlparse, parse_qs
 
+from env_config import ensure_env_loaded
+
+ensure_env_loaded()
+
 logger = logging.getLogger(__name__)
 
 POLYGON_BASE = "https://api.polygon.io"
@@ -265,7 +269,7 @@ async def _get_options_iv_and_vol(
 
     for opt in chain:
         details    = opt.get("details") or {}
-        iv         = details.get("implied_volatility")
+        iv         = opt.get("implied_volatility")
         strike     = details.get("strike_price", 0)
         day        = opt.get("day") or {}
         vol        = day.get("volume", 0) or 0

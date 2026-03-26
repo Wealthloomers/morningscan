@@ -61,7 +61,7 @@ const PARAM_GROUPS = [
     fields:[
       { key:"dte_min", label:"DTE Minimum", unit:"days to expiry", min:7, max:60, step:1, tip:"Minimum days to expiry for options scanned. 30 DTE gives access to liquid monthly contracts." },
       { key:"dte_max", label:"DTE Maximum", unit:"days to expiry", min:30, max:180, step:5, tip:"Maximum days to expiry. 90 DTE covers one full quarterly cycle." },
-      { key:"min_atm_oi", label:"Min ATM OI", unit:"contracts", min:100, max:5000, step:100, tip:"Minimum open interest at ATM strike." },
+      { key:"min_atm_oi", label:"Min ATM OI", unit:"contracts", min:0, max:50000, step:100, tip:"Minimum open interest at ATM strike." },
       { key:"sr_min_touches", label:"S/R Min Touches", unit:"touches", min:0, max:500, step:1, tip:"Minimum times price tested the S/R level." },
       { key:"sr_lookback_days", label:"S/R Recency", unit:"days", min:0, max:500, step:1, tip:"At least one touch must be within this many days." },
       { key:"sr_proximity_pct", label:"S/R Proximity", unit:"% from level", min:0, max:500, step:0.25, tip:"Price must be within this % of the S/R level." },

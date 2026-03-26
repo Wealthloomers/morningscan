@@ -26,9 +26,11 @@ class StockData:
     iv_rank:                    Optional[float] = None
     iv_pct:                     Optional[float] = None
     spread_pct:                 Optional[float] = None
+    quote_data_available:       bool = True
     put_call_ratio:             Optional[float] = None
     call_put_ratio:             Optional[float] = None
     atm_oi:                     int   = 0
+    oi_data_available:          bool  = True
     daily_options_vol_usd:      float = 0.0
     unusual_activity:           bool  = False
     unusual_strikes:            List  = field(default_factory=list)
@@ -44,9 +46,9 @@ def _passes_gates(d: StockData, p: Dict) -> bool:
     min_atm_oi         = int(p.get("min_atm_oi",            500))
     min_options_vol    = float(p.get("min_options_vol_usd",  500_000))
 
-    if d.spread_pct is None or d.spread_pct >= spread_max:
+    if d.quote_data_available and (d.spread_pct is None or d.spread_pct >= spread_max):
         return False
-    if d.atm_oi < min_atm_oi:
+    if d.oi_data_available and d.atm_oi < min_atm_oi:
         return False
     if d.daily_options_vol_usd < min_options_vol:
         return False

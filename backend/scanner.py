@@ -7,6 +7,7 @@ User-configurable params are passed through to polygon_client and scoring functi
 import asyncio
 import aiohttp
 import logging
+import os
 from typing import Optional, List, Dict
 from datetime import datetime
 
@@ -87,7 +88,7 @@ async def process_ticker(
         dte_max = int(p["dte_max"])
 
         # Fetch all options data in parallel, passing DTE window from params
-        (chain, ivr, spread, pc_ratio,
+        (chain, ivr, spread_data, pc_ratio,
          liquidity, earn_days, implied_move) = await asyncio.gather(
             get_options_chain(session, ticker, dte_min=dte_min, dte_max=dte_max),
             get_iv_rank(session, ticker, current_price, dte_min=dte_min, dte_max=dte_max),
@@ -136,10 +137,12 @@ async def process_ticker(
             wick_rejection_support    = wick_sup,
             wick_rejection_resistance = wick_res,
             iv_rank                   = ivr,
-            spread_pct                = spread,
+            spread_pct                = spread_data.get("spread_pct"),
+            quote_data_available      = spread_data.get("quote_data_available", False),
             put_call_ratio            = unusual.get("put_call_ratio"),
             call_put_ratio            = unusual.get("call_put_ratio"),
             atm_oi                    = liquidity.get("atm_oi", 0),
+            oi_data_available         = liquidity.get("oi_data_available", False),
             daily_options_vol_usd     = liquidity.get("daily_options_volume_usd", 0),
             unusual_activity          = unusual.get("unusual", False),
             unusual_strikes           = unusual.get("unusual_strikes", []),
@@ -164,6 +167,12 @@ async def run_scan(
     """
     if tickers is None:
         tickers = get_universe()
+
+    if not os.getenv("POLYGON_API_KEY"):
+        raise RuntimeError(
+            "POLYGON_API_KEY is not set. Create backend/.env from .env.example "
+            "or set the environment variable before running scans."
+        )
 
     # Merge user params with defaults — user values take precedence
     p = {**SCAN_DEFAULTS, **(params or {})}
@@ -200,6 +209,16 @@ async def run_scan(
 
     # Pass user params to scoring so thresholds are respected
     output = build_all_lists(results, params=p)
+    output["diagnostics"] = {
+        "processed_stocks": len(results),
+        "support_found": sum(1 for s in results if s.support is not None),
+        "resistance_found": sum(1 for s in results if s.resistance is not None),
+        "iv_rank_available": sum(1 for s in results if s.iv_rank is not None),
+        "quote_data_available": sum(1 for s in results if s.quote_data_available),
+        "oi_data_available": sum(1 for s in results if s.oi_data_available),
+        "earnings_available": sum(1 for s in results if s.days_to_earnings is not None),
+        "unusual_activity_found": sum(1 for s in results if s.unusual_activity),
+    }
     output["scan_time"]     = datetime.utcnow().isoformat() + "Z"
     output["universe_size"] = len(tickers)
     output["params_used"]   = {k: p[k] for k in SCAN_DEFAULTS}

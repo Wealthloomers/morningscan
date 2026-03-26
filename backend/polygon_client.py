@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 import logging
 
+from env_config import ensure_env_loaded
+
+ensure_env_loaded()
+
 logger = logging.getLogger(__name__)
 
 POLYGON_BASE = "https://api.polygon.io"
@@ -243,7 +247,7 @@ async def get_spread_pct(
     current_price: float,
     dte_min:       int = 30,
     dte_max:       int = 45,
-) -> Optional[float]:
+) -> Dict:
     """
     (ask - bid) / ask * 100 for near-ATM options in the 30–45 DTE range.
     30–45 DTE is the most liquid part of the 30–90 window and gives the most
@@ -251,9 +255,10 @@ async def get_spread_pct(
     """
     chain = await get_options_chain(session, ticker, dte_min=dte_min, dte_max=dte_max)
     if not chain:
-        return None
+        return {"spread_pct": None, "quote_data_available": False}
 
     spreads: List[float] = []
+    quote_data_available = False
     for opt in chain:
         details = opt.get("details") or {}
         strike  = details.get("strike_price", 0)
@@ -262,12 +267,17 @@ async def get_spread_pct(
         if abs(strike - current_price) / current_price > 0.05:
             continue
         last_quote = opt.get("last_quote") or {}
+        if last_quote:
+            quote_data_available = True
         bid = last_quote.get("bid", 0) or 0
         ask = last_quote.get("ask", 0) or 0
         if ask > 0:
             spreads.append((ask - bid) / ask * 100)
 
-    return round(sum(spreads) / len(spreads), 2) if spreads else None
+    return {
+        "spread_pct": round(sum(spreads) / len(spreads), 2) if spreads else None,
+        "quote_data_available": quote_data_available,
+    }
 
 
 # ── Put/Call ratio ────────────────────────────────────────────────────────────
@@ -314,10 +324,15 @@ async def get_options_liquidity(
     """
     chain = await get_options_chain(session, ticker, dte_min=dte_min, dte_max=dte_max)
     if not chain:
-        return {"atm_oi": 0, "daily_options_volume_usd": 0}
+        return {
+            "atm_oi": 0,
+            "daily_options_volume_usd": 0,
+            "oi_data_available": False,
+        }
 
     atm_oi           = 0
     total_dollar_vol = 0.0
+    oi_data_available = False
 
     for opt in chain:
         details = opt.get("details") or {}
@@ -325,10 +340,16 @@ async def get_options_liquidity(
         day     = opt.get("day") or {}
         vol     = day.get("volume", 0) or 0
         vwap    = day.get("vwap",   0) or 0
-        oi      = opt.get("open_interest", 0) or 0
+        if "open_interest" in opt and opt.get("open_interest") is not None:
+            oi_data_available = True
+        oi = opt.get("open_interest", 0) or 0
 
         total_dollar_vol += vol * vwap * 100
         if strike and current_price and abs(strike - current_price) / current_price < 0.03:
             atm_oi += oi
 
-    return {"atm_oi": atm_oi, "daily_options_volume_usd": total_dollar_vol}
+    return {
+        "atm_oi": atm_oi,
+        "daily_options_volume_usd": total_dollar_vol,
+        "oi_data_available": oi_data_available,
+    }

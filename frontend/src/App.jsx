@@ -29,7 +29,6 @@ const FACTORY_DEFAULTS = {
   universe_size: 500,
   dte_min: 30,
   dte_max: 90,
-  spread_max: 10,
   min_atm_oi: 500,
   min_options_vol_usd: 500000,
   sr_min_touches: 2,
@@ -68,7 +67,6 @@ const PARAM_GROUPS = [
     fields:[
       { key:"dte_min", label:"DTE Minimum", unit:"days to expiry", min:7, max:60, step:1, tip:"Minimum days to expiry for options scanned. 30 DTE gives access to liquid monthly contracts." },
       { key:"dte_max", label:"DTE Maximum", unit:"days to expiry", min:30, max:180, step:5, tip:"Maximum days to expiry. 90 DTE covers one full quarterly cycle." },
-      { key:"spread_max", label:"Max Spread", unit:"% of premium", min:1, max:20, step:0.5, tip:"Max bid/ask spread as % of ATM premium." },
       { key:"min_atm_oi", label:"Min ATM OI", unit:"contracts", min:100, max:5000, step:100, tip:"Minimum open interest at ATM strike." },
       { key:"min_options_vol_usd", label:"Min Options Volume", unit:"USD/day", min:100000, max:2000000, step:100000, tip:"Minimum daily options dollar volume." },
       { key:"sr_min_touches", label:"S/R Min Touches", unit:"touches", min:0, max:500, step:1, tip:"Minimum times price tested the S/R level." },
@@ -167,9 +165,6 @@ function Row({ s, list, i }) {
           : <span style={{ color:T.textFaint }}>{"\u2014"}</span>}
       </td>
       <td style={{ padding:"11px 10px" }}>
-        <span style={{ fontFamily:"monospace", fontSize:12, fontWeight:600, color:(s.spread_pct??99)<4?T.green:(s.spread_pct??99)<7?T.amber:T.red }}>{f(s.spread_pct,1)}%</span>
-      </td>
-      <td style={{ padding:"11px 10px" }}>
         {s.days_to_earnings!=null
           ? <span style={{ fontSize:10, padding:"2px 6px", borderRadius:3, fontFamily:"monospace", background:s.days_to_earnings<=14?T.amberBg:T.bgAlt, color:s.days_to_earnings<=14?T.amber:T.textMuted, border:`1px solid ${s.days_to_earnings<=14?T.amberBord:T.border}` }}>{s.days_to_earnings}d</span>
           : <span style={{ color:T.textFaint, fontSize:11 }}>{"\u2014"}</span>}
@@ -209,7 +204,7 @@ function Panel({ list, stocks }) {
           <table style={{ width:"100%", borderCollapse:"collapse", minWidth:840 }}>
             <thead>
               <tr style={{ background:T.bg, borderBottom:`1px solid ${T.border}` }}>
-                {["","Ticker","Price","RSI (W)","IVR",list.srLabel,"Spread","Earn","Flags","Score"].map((h,i)=>(
+                {["","Ticker","Price","RSI (W)","IVR",list.srLabel,"Earn","Flags","Score"].map((h,i)=>(
                   <th key={i} style={{ padding:"7px 10px", paddingLeft:i===0?16:10, paddingRight:i===9?16:10, textAlign:"left", fontSize:9, color:T.textMuted, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase", whiteSpace:"nowrap", fontFamily:"monospace" }}>{h}</th>
                 ))}
               </tr>
@@ -432,7 +427,6 @@ export default function App() {
                 {[
                   `Universe: Top${params.universe_size} \u00B7 IV>${params.universe_min_iv_pct}% \u00B7 Cap>$${params.universe_min_market_cap_b}B \u00B7 Vol>$${params.universe_min_dollar_vol_m}M \u00B7 Price>$${params.universe_min_price}`,
                   `DTE:${params.dte_min}\u2013${params.dte_max}d`,
-                  `Spread<${params.spread_max}%`,
                   `OI\u2265${params.min_atm_oi}`,
                   `S/R:${params.sr_min_touches}+/${params.sr_lookback_days}d`,
                   `Blackout:${params.earnings_blackout_days}d`,
@@ -534,3 +528,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -13,9 +13,9 @@ from datetime import datetime
 
 from polygon_client import (
     get_daily_bars, get_weekly_bars, get_options_chain,
-    get_iv_rank, get_spread_pct, get_put_call_ratio,
+    get_iv_rank, get_put_call_ratio,
     get_options_liquidity, days_to_earnings,
-    get_implied_move_pct, get_ticker_name,
+    get_ticker_name,
 )
 from technical import (
     calculate_rsi, get_trend,
@@ -36,7 +36,6 @@ BATCH_DELAY = 1.5  # seconds between batches
 SCAN_DEFAULTS: Dict = {
     "dte_min":               30,
     "dte_max":               90,
-    "spread_max":            10.0,
     "min_atm_oi":            500,
     "min_options_vol_usd":   500_000,
     "sr_min_touches":        2,
@@ -88,15 +87,13 @@ async def process_ticker(
         dte_max = int(p["dte_max"])
 
         # Fetch all options data in parallel, passing DTE window from params
-        (chain, ivr, spread_data, pc_ratio,
-         liquidity, earn_days, implied_move) = await asyncio.gather(
+        (chain, ivr, pc_ratio,
+         liquidity, earn_days) = await asyncio.gather(
             get_options_chain(session, ticker, dte_min=dte_min, dte_max=dte_max),
             get_iv_rank(session, ticker, current_price, dte_min=dte_min, dte_max=dte_max),
-            get_spread_pct(session, ticker, current_price, dte_min=dte_min, dte_max=min(dte_max, 45)),
             get_put_call_ratio(session, ticker, dte_min=dte_min, dte_max=dte_max),
             get_options_liquidity(session, ticker, current_price, dte_min=dte_min, dte_max=dte_max),
             days_to_earnings(session, ticker),
-            get_implied_move_pct(session, ticker, current_price, dte_min=dte_min, dte_max=min(dte_max, 45)),
         )
 
         # Technical analysis (pure calculation, no I/O)
@@ -137,17 +134,15 @@ async def process_ticker(
             wick_rejection_support    = wick_sup,
             wick_rejection_resistance = wick_res,
             iv_rank                   = ivr,
-            spread_pct                = spread_data.get("spread_pct"),
-            quote_data_available      = spread_data.get("quote_data_available", False),
             put_call_ratio            = unusual.get("put_call_ratio"),
             call_put_ratio            = unusual.get("call_put_ratio"),
             atm_oi                    = liquidity.get("atm_oi", 0),
             oi_data_available         = liquidity.get("oi_data_available", False),
             daily_options_vol_usd     = liquidity.get("daily_options_volume_usd", 0),
+            volume_data_available     = liquidity.get("volume_data_available", False),
             unusual_activity          = unusual.get("unusual", False),
             unusual_strikes           = unusual.get("unusual_strikes", []),
             call_oi_skewed_at_res     = call_skewed,
-            implied_move_pct          = implied_move,
             days_to_earnings          = earn_days,
         )
 
@@ -214,8 +209,8 @@ async def run_scan(
         "support_found": sum(1 for s in results if s.support is not None),
         "resistance_found": sum(1 for s in results if s.resistance is not None),
         "iv_rank_available": sum(1 for s in results if s.iv_rank is not None),
-        "quote_data_available": sum(1 for s in results if s.quote_data_available),
         "oi_data_available": sum(1 for s in results if s.oi_data_available),
+        "volume_data_available": sum(1 for s in results if s.volume_data_available),
         "earnings_available": sum(1 for s in results if s.days_to_earnings is not None),
         "unusual_activity_found": sum(1 for s in results if s.unusual_activity),
     }
@@ -233,3 +228,4 @@ if __name__ == "__main__":
     )
     result = asyncio.run(run_scan())
     print(json.dumps(result, indent=2, default=str))
+

@@ -30,23 +30,17 @@ const FACTORY_DEFAULTS = {
   dte_min: 30,
   dte_max: 90,
   min_atm_oi: 500,
-  min_options_vol_usd: 500000,
   sr_min_touches: 2,
   sr_lookback_days: 30,
   sr_proximity_pct: 2.0,
-  earnings_blackout_days: 21,
   lc_rsi_max: 35,
   lc_ivr_max: 35,
-  lc_catalyst_min_days: 5,
-  lc_catalyst_max_days: 21,
   lc_pc_ratio_min: 1.2,
   sc_rsi_min: 70,
   sc_ivr_min: 70,
   lp_rsi_min: 70,
   lp_ivr_max: 35,
   lp_cp_ratio_min: 1.5,
-  lp_catalyst_min_days: 5,
-  lp_catalyst_max_days: 21,
   sp_rsi_max: 35,
   sp_ivr_min: 70,
 };
@@ -68,11 +62,9 @@ const PARAM_GROUPS = [
       { key:"dte_min", label:"DTE Minimum", unit:"days to expiry", min:7, max:60, step:1, tip:"Minimum days to expiry for options scanned. 30 DTE gives access to liquid monthly contracts." },
       { key:"dte_max", label:"DTE Maximum", unit:"days to expiry", min:30, max:180, step:5, tip:"Maximum days to expiry. 90 DTE covers one full quarterly cycle." },
       { key:"min_atm_oi", label:"Min ATM OI", unit:"contracts", min:100, max:5000, step:100, tip:"Minimum open interest at ATM strike." },
-      { key:"min_options_vol_usd", label:"Min Options Volume", unit:"USD/day", min:100000, max:2000000, step:100000, tip:"Minimum daily options dollar volume." },
       { key:"sr_min_touches", label:"S/R Min Touches", unit:"touches", min:0, max:500, step:1, tip:"Minimum times price tested the S/R level." },
       { key:"sr_lookback_days", label:"S/R Recency", unit:"days", min:0, max:500, step:1, tip:"At least one touch must be within this many days." },
       { key:"sr_proximity_pct", label:"S/R Proximity", unit:"% from level", min:0, max:500, step:0.25, tip:"Price must be within this % of the S/R level." },
-      { key:"earnings_blackout_days",label:"Earnings Blackout", unit:"days", min:0, max:500, step:1, tip:"Short strategies excluded if earnings fall within N days." },
     ],
   },
   {
@@ -80,8 +72,6 @@ const PARAM_GROUPS = [
     fields:[
       { key:"lc_rsi_max", label:"RSI Maximum", unit:"weekly", min:20, max:45, step:1, tip:"Weekly RSI must be below this (oversold)." },
       { key:"lc_ivr_max", label:"IVR Maximum", unit:"IVP %", min:10, max:50, step:1, tip:"IV Rank below this = cheap options." },
-      { key:"lc_catalyst_min_days", label:"Catalyst Min", unit:"days to earn", min:0, max:500, step:1, tip:"Earnings bonus window start." },
-      { key:"lc_catalyst_max_days", label:"Catalyst Max", unit:"days to earn", min:0, max:500, step:1, tip:"Earnings bonus window end." },
       { key:"lc_pc_ratio_min", label:"P/C Ratio Min", unit:"ratio", min:0.8, max:2.5, step:0.1, tip:"Put/Call ratio above this = contrarian bullish." },
     ],
   },
@@ -98,8 +88,6 @@ const PARAM_GROUPS = [
       { key:"lp_rsi_min", label:"RSI Minimum", unit:"weekly", min:60, max:85, step:1, tip:"Weekly RSI must be above this (overbought)." },
       { key:"lp_ivr_max", label:"IVR Maximum", unit:"IVP %", min:10, max:50, step:1, tip:"IV Rank below this = cheap puts (complacency)." },
       { key:"lp_cp_ratio_min", label:"C/P Ratio Min", unit:"ratio", min:0.8, max:3.0, step:0.1, tip:"Call/Put ratio above this = contrarian bearish." },
-      { key:"lp_catalyst_min_days", label:"Catalyst Min", unit:"days to earn", min:0, max:500, step:1, tip:"Earnings bonus window start." },
-      { key:"lp_catalyst_max_days", label:"Catalyst Max", unit:"days to earn", min:0, max:500, step:1, tip:"Earnings bonus window end." },
     ],
   },
   {
@@ -165,11 +153,6 @@ function Row({ s, list, i }) {
           : <span style={{ color:T.textFaint }}>{"\u2014"}</span>}
       </td>
       <td style={{ padding:"11px 10px" }}>
-        {s.days_to_earnings!=null
-          ? <span style={{ fontSize:10, padding:"2px 6px", borderRadius:3, fontFamily:"monospace", background:s.days_to_earnings<=14?T.amberBg:T.bgAlt, color:s.days_to_earnings<=14?T.amber:T.textMuted, border:`1px solid ${s.days_to_earnings<=14?T.amberBord:T.border}` }}>{s.days_to_earnings}d</span>
-          : <span style={{ color:T.textFaint, fontSize:11 }}>{"\u2014"}</span>}
-      </td>
-      <td style={{ padding:"11px 10px" }}>
         <div style={{ display:"flex", gap:4 }}>
           {s.unusual_activity && <span style={{ fontSize:9, padding:"2px 5px", borderRadius:3, background:T.amberBg, color:T.amber, border:`1px solid ${T.amberBord}`, fontWeight:700, fontFamily:"monospace" }}>UOA</span>}
           {s.wick_rejection && <span style={{ fontSize:9, padding:"2px 5px", borderRadius:3, background:list.bg, color:list.color, border:`1px solid ${list.bord}`, fontWeight:700, fontFamily:"monospace" }}>WR</span>}
@@ -204,7 +187,7 @@ function Panel({ list, stocks }) {
           <table style={{ width:"100%", borderCollapse:"collapse", minWidth:840 }}>
             <thead>
               <tr style={{ background:T.bg, borderBottom:`1px solid ${T.border}` }}>
-                {["","Ticker","Price","RSI (W)","IVR",list.srLabel,"Earn","Flags","Score"].map((h,i)=>(
+                {["","Ticker","Price","RSI (W)","IVR",list.srLabel,"Flags","Score"].map((h,i)=>(
                   <th key={i} style={{ padding:"7px 10px", paddingLeft:i===0?16:10, paddingRight:i===9?16:10, textAlign:"left", fontSize:9, color:T.textMuted, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase", whiteSpace:"nowrap", fontFamily:"monospace" }}>{h}</th>
                 ))}
               </tr>
@@ -428,9 +411,7 @@ export default function App() {
                   `Universe: Top${params.universe_size} \u00B7 IV>${params.universe_min_iv_pct}% \u00B7 Cap>$${params.universe_min_market_cap_b}B \u00B7 Vol>$${params.universe_min_dollar_vol_m}M \u00B7 Price>$${params.universe_min_price}`,
                   `DTE:${params.dte_min}\u2013${params.dte_max}d`,
                   `OI\u2265${params.min_atm_oi}`,
-                  `S/R:${params.sr_min_touches}+/${params.sr_lookback_days}d`,
-                  `Blackout:${params.earnings_blackout_days}d`,
-                  `LC:RSI<${params.lc_rsi_max} IVR<${params.lc_ivr_max}`,
+                  `S/R:${params.sr_min_touches}+/${params.sr_lookback_days}d`,                  `LC:RSI<${params.lc_rsi_max} IVR<${params.lc_ivr_max}`,
                   `SC:RSI>${params.sc_rsi_min} IVR>${params.sc_ivr_min}`,
                   `LP:RSI>${params.lp_rsi_min} IVR<${params.lp_ivr_max}`,
                   `SP:RSI<${params.sp_rsi_max} IVR>${params.sp_ivr_min}`,
@@ -511,7 +492,7 @@ export default function App() {
           <div style={{ animation:"up 0.35s ease" }}>
             {LISTS.map(l => <Panel key={l.key} list={l} stocks={data[l.key]||[]} />)}
             <div style={{ marginTop:8, padding:"10px 18px", background:T.white, border:`1px solid ${T.border}`, borderRadius:8, display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-              <span style={{ fontSize:10, color:T.textMuted, fontFamily:"monospace" }}>UOA = Unusual Options Activity · WR = Wick Rejection · Earnings blackout: short strategies only</span>
+              <span style={{ fontSize:10, color:T.textMuted, fontFamily:"monospace" }}>UOA = Unusual Options Activity · WR = Wick Rejection</span>
               <span style={{ fontSize:10, color:T.textFaint, fontFamily:"monospace" }}>Data via Polygon.io · Not financial advice</span>
             </div>
           </div>
@@ -528,4 +509,6 @@ export default function App() {
     </div>
   );
 }
+
+
 

@@ -328,11 +328,13 @@ async def get_options_liquidity(
             "atm_oi": 0,
             "daily_options_volume_usd": 0,
             "oi_data_available": False,
+            "volume_data_available": False,
         }
 
     atm_oi           = 0
     total_dollar_vol = 0.0
     oi_data_available = False
+    volume_data_available = False
 
     for opt in chain:
         details = opt.get("details") or {}
@@ -343,6 +345,8 @@ async def get_options_liquidity(
         if "open_interest" in opt and opt.get("open_interest") is not None:
             oi_data_available = True
         oi = opt.get("open_interest", 0) or 0
+        if vol > 0 and vwap > 0:
+            volume_data_available = True
 
         total_dollar_vol += vol * vwap * 100
         if strike and current_price and abs(strike - current_price) / current_price < 0.03:
@@ -352,4 +356,5 @@ async def get_options_liquidity(
         "atm_oi": atm_oi,
         "daily_options_volume_usd": total_dollar_vol,
         "oi_data_available": oi_data_available,
+        "volume_data_available": volume_data_available,
     }

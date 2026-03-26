@@ -25,9 +25,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from env_config import ensure_env_loaded
 from scanner import run_scan
 from universe import get_universe
 from universe_builder import build_universe, get_cache_metadata
+
+ensure_env_loaded()
 
 logging.basicConfig(
     level=logging.INFO,

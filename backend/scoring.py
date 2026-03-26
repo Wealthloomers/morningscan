@@ -29,21 +29,14 @@ class StockData:
     call_put_ratio:             Optional[float] = None
     atm_oi:                     int = 0
     oi_data_available:          bool = True
-    daily_options_vol_usd:      float = 0.0
-    volume_data_available:      bool = True
     unusual_activity:           bool = False
     unusual_strikes:            List = field(default_factory=list)
     call_oi_skewed_at_res:      bool = False
-    days_to_earnings:           Optional[int] = None
 
 
 def _passes_gates(d: StockData, p: Dict) -> bool:
     min_atm_oi = int(p.get("min_atm_oi", 500))
-    min_options_vol = float(p.get("min_options_vol_usd", 500_000))
-
     if d.oi_data_available and d.atm_oi < min_atm_oi:
-        return False
-    if d.volume_data_available and d.daily_options_vol_usd < min_options_vol:
         return False
     return True
 
@@ -54,8 +47,6 @@ def score_long_call(d: StockData, p: Dict) -> Optional[float]:
 
     rsi_max = float(p.get("lc_rsi_max", 35))
     ivr_max = float(p.get("lc_ivr_max", 35))
-    catalyst_min = int(p.get("lc_catalyst_min_days", 5))
-    catalyst_max = int(p.get("lc_catalyst_max_days", 21))
     pc_ratio_min = float(p.get("lc_pc_ratio_min", 1.2))
 
     if d.weekly_rsi is None or d.weekly_rsi >= rsi_max:
@@ -77,20 +68,12 @@ def score_long_call(d: StockData, p: Dict) -> Optional[float]:
         sr += 5
     score += min(sr, 100) * 0.20
 
-    cat = 0
-    if d.days_to_earnings is not None:
-        if catalyst_min <= d.days_to_earnings <= catalyst_max:
-            cat = 100
-        elif d.days_to_earnings <= catalyst_max + 9:
-            cat = 40
-    score += cat * 0.15
-
     flow = 0
     if d.unusual_activity:
         flow += 60
     if d.put_call_ratio is not None and d.put_call_ratio > pc_ratio_min:
         flow += 40
-    score += min(flow, 100) * 0.25
+    score += min(flow, 100) * 0.40
 
     if d.trend.get("volume_tapering_on_down_days"):
         score += 3
@@ -104,15 +87,12 @@ def score_short_call(d: StockData, p: Dict) -> Optional[float]:
 
     rsi_min = float(p.get("sc_rsi_min", 70))
     ivr_min = float(p.get("sc_ivr_min", 70))
-    blackout = int(p.get("earnings_blackout_days", 21))
 
     if d.weekly_rsi is None or d.weekly_rsi <= rsi_min:
         return None
     if d.iv_rank is None or d.iv_rank <= ivr_min:
         return None
     if d.resistance is None:
-        return None
-    if d.days_to_earnings is not None and d.days_to_earnings <= blackout:
         return None
 
     score = 0.0
@@ -130,17 +110,12 @@ def score_short_call(d: StockData, p: Dict) -> Optional[float]:
         sr += 10
     score += min(sr, 100) * 0.20
 
-    caution = 100
-    if d.days_to_earnings is not None and d.days_to_earnings <= blackout + 14:
-        caution = 30
-    score += caution * 0.10
-
     flow = 0
     if d.unusual_activity:
         flow += 50
     if d.call_put_ratio is not None and d.call_put_ratio > 1.5:
         flow += 50
-    score += min(flow, 100) * 0.30
+    score += min(flow, 100) * 0.40
 
     if not d.trend.get("above_20ma", True):
         score += 3
@@ -159,8 +134,6 @@ def score_long_put(d: StockData, p: Dict) -> Optional[float]:
     rsi_min = float(p.get("lp_rsi_min", 70))
     ivr_max = float(p.get("lp_ivr_max", 35))
     cp_ratio_min = float(p.get("lp_cp_ratio_min", 1.5))
-    catalyst_min = int(p.get("lp_catalyst_min_days", 5))
-    catalyst_max = int(p.get("lp_catalyst_max_days", 21))
 
     if d.weekly_rsi is None or d.weekly_rsi <= rsi_min:
         return None
@@ -182,20 +155,12 @@ def score_long_put(d: StockData, p: Dict) -> Optional[float]:
         sr += 5
     score += min(sr, 100) * 0.20
 
-    cat = 0
-    if d.days_to_earnings is not None:
-        if catalyst_min <= d.days_to_earnings <= catalyst_max:
-            cat = 100
-        elif d.days_to_earnings <= catalyst_max + 9:
-            cat = 40
-    score += cat * 0.15
-
     flow = 0
     if d.unusual_activity:
         flow += 50
     if d.call_put_ratio is not None and d.call_put_ratio > cp_ratio_min:
         flow += 50
-    score += min(flow, 100) * 0.25
+    score += min(flow, 100) * 0.40
 
     return round(score, 1)
 
@@ -206,7 +171,6 @@ def score_short_put(d: StockData, p: Dict) -> Optional[float]:
 
     rsi_max = float(p.get("sp_rsi_max", 35))
     ivr_min = float(p.get("sp_ivr_min", 70))
-    blackout = int(p.get("earnings_blackout_days", 21))
 
     if d.weekly_rsi is None or d.weekly_rsi >= rsi_max:
         return None
@@ -215,8 +179,6 @@ def score_short_put(d: StockData, p: Dict) -> Optional[float]:
     if d.support is None:
         return None
     if d.trend.get("above_200ma") is False:
-        return None
-    if d.days_to_earnings is not None and d.days_to_earnings <= blackout:
         return None
 
     score = 0.0
@@ -231,17 +193,12 @@ def score_short_put(d: StockData, p: Dict) -> Optional[float]:
         sr += 10
     score += min(sr, 100) * 0.20
 
-    caution = 100
-    if d.days_to_earnings is not None and d.days_to_earnings <= blackout + 14:
-        caution = 20
-    score += caution * 0.05
-
     flow = 0
     if d.unusual_activity:
         flow += 60
     if d.put_call_ratio is not None and d.put_call_ratio > 1.5:
         flow += 40
-    score += min(flow, 100) * 0.35
+    score += min(flow, 100) * 0.40
 
     return round(score, 1)
 
@@ -268,7 +225,6 @@ def _rank(
             "iv_rank": s.iv_rank,
             "support": s.support,
             "resistance": s.resistance,
-            "days_to_earnings": s.days_to_earnings,
             "unusual_activity": s.unusual_activity,
             "unusual_strikes": s.unusual_strikes,
             "put_call_ratio": s.put_call_ratio,

@@ -255,7 +255,7 @@ export default function App() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`${API_URL}/status`);
+      const res = await fetch(`${API_URL}/status`, { cache:"no-store" });
       if (!res.ok) return;
       const json = await res.json();
       setStatus(json);
@@ -270,7 +270,7 @@ export default function App() {
 
   const fetchResults = async () => {
     try {
-      const res = await fetch(`${API_URL}/results`);
+      const res = await fetch(`${API_URL}/results`, { cache:"no-store" });
       if (!res.ok) return;
       const json = await res.json();
       if (json.status === "ok") setData(json);

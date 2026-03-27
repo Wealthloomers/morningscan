@@ -237,6 +237,63 @@ def _rank(
     return out
 
 
+def _count_true(stocks: List[StockData], predicate) -> int:
+    return sum(1 for s in stocks if predicate(s))
+
+
+def build_strategy_diagnostics(
+    stocks: List[StockData],
+    params: Optional[Dict] = None,
+) -> Dict:
+    p = params or {}
+
+    lc_rsi_max = float(p.get("lc_rsi_max", 35))
+    lc_ivr_max = float(p.get("lc_ivr_max", 35))
+
+    sc_rsi_min = float(p.get("sc_rsi_min", 70))
+    sc_ivr_min = float(p.get("sc_ivr_min", 70))
+
+    lp_rsi_min = float(p.get("lp_rsi_min", 70))
+    lp_ivr_max = float(p.get("lp_ivr_max", 35))
+
+    sp_rsi_max = float(p.get("sp_rsi_max", 35))
+    sp_ivr_min = float(p.get("sp_ivr_min", 70))
+
+    return {
+        "long_calls": {
+            "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
+            "rsi_pass": _count_true(stocks, lambda s: s.weekly_rsi is not None and s.weekly_rsi < lc_rsi_max),
+            "ivr_pass": _count_true(stocks, lambda s: s.iv_rank is not None and s.iv_rank < lc_ivr_max),
+            "support_pass": _count_true(stocks, lambda s: s.support is not None),
+            "trend_pass": _count_true(stocks, lambda s: s.trend.get("above_200ma") is not False),
+            "final_pass": _count_true(stocks, lambda s: score_long_call(s, p) is not None),
+        },
+        "short_calls": {
+            "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
+            "rsi_pass": _count_true(stocks, lambda s: s.weekly_rsi is not None and s.weekly_rsi > sc_rsi_min),
+            "ivr_pass": _count_true(stocks, lambda s: s.iv_rank is not None and s.iv_rank > sc_ivr_min),
+            "resistance_pass": _count_true(stocks, lambda s: s.resistance is not None),
+            "final_pass": _count_true(stocks, lambda s: score_short_call(s, p) is not None),
+        },
+        "long_puts": {
+            "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
+            "rsi_pass": _count_true(stocks, lambda s: s.weekly_rsi is not None and s.weekly_rsi > lp_rsi_min),
+            "ivr_pass": _count_true(stocks, lambda s: s.iv_rank is not None and s.iv_rank < lp_ivr_max),
+            "resistance_pass": _count_true(stocks, lambda s: s.resistance is not None),
+            "trend_pass": _count_true(stocks, lambda s: s.trend.get("above_50ma") is not True),
+            "final_pass": _count_true(stocks, lambda s: score_long_put(s, p) is not None),
+        },
+        "short_puts": {
+            "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
+            "rsi_pass": _count_true(stocks, lambda s: s.weekly_rsi is not None and s.weekly_rsi < sp_rsi_max),
+            "ivr_pass": _count_true(stocks, lambda s: s.iv_rank is not None and s.iv_rank > sp_ivr_min),
+            "support_pass": _count_true(stocks, lambda s: s.support is not None),
+            "trend_pass": _count_true(stocks, lambda s: s.trend.get("above_200ma") is not False),
+            "final_pass": _count_true(stocks, lambda s: score_short_put(s, p) is not None),
+        },
+    }
+
+
 def build_all_lists(
     stocks: List[StockData],
     params: Optional[Dict] = None,
@@ -247,5 +304,6 @@ def build_all_lists(
         "short_calls": _rank(stocks, score_short_call, p),
         "long_puts": _rank(stocks, score_long_put, p),
         "short_puts": _rank(stocks, score_short_put, p),
+        "strategy_diagnostics": build_strategy_diagnostics(stocks, p),
         "scanned": len(stocks),
     }

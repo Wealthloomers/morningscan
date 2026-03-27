@@ -429,8 +429,8 @@ export default function App() {
             <span style={{ fontSize:11, color:T.amber, fontFamily:"monospace", fontWeight:600 }}>Enter SCAN_API_KEY:</span>
             <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="your-scan-api-key"
               style={{ flex:1, minWidth:200, padding:"6px 10px", borderRadius:5, border:`1px solid ${T.amberBord}`, fontFamily:"monospace", fontSize:12, background:T.white, outline:"none" }} />
-            <button onClick={()=>{ setShowKeyInput(false); setError(null); triggerScan(); }}
-              style={{ padding:"6px 14px", borderRadius:5, background:T.amber, color:T.white, border:"none", cursor:"pointer", fontFamily:"monospace", fontSize:11, fontWeight:700 }}>Retry</button>
+            <button onClick={()=>{ setShowKeyInput(false); setError(null); }}
+              style={{ padding:"6px 14px", borderRadius:5, background:T.amber, color:T.white, border:"none", cursor:"pointer", fontFamily:"monospace", fontSize:11, fontWeight:700 }}>Use Key</button>
           </div>
         )}
 

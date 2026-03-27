@@ -229,6 +229,7 @@ export default function App() {
   const [params, setParams] = useState({...FACTORY_DEFAULTS});
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState(null);
   const [paramsOpen, setParamsOpen] = useState(true);
   const [flashSave, setFlashSave] = useState(false);
@@ -257,6 +258,8 @@ export default function App() {
       if (!res.ok) return;
       const json = await res.json();
       if (json.status === "ok") setData(json);
+      setLoading(Boolean(json?.is_scanning));
+      if (!json?.is_scanning) setCancelling(false);
       return json;
     } catch(e) {}
   };
@@ -264,9 +267,11 @@ export default function App() {
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setLoading(false);
+    setCancelling(false);
   };
 
   const startPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       const json = await fetchResults();
       if (json?.status === "ok" && !json?.is_scanning) {
@@ -277,7 +282,7 @@ export default function App() {
   };
 
   const triggerScan = async () => {
-    setError(null); setLoading(true);
+    setError(null); setLoading(true); setCancelling(false);
     try {
       const res = await fetch(`${API_URL}/scan`, {
         method:"POST",
@@ -288,6 +293,29 @@ export default function App() {
       if (!res.ok) { const b = await res.json().catch(()=>{}); setError(b?.detail||`Server error ${res.status}`); setLoading(false); return; }
       startPolling();
     } catch(e) { setError(`Cannot reach backend at ${API_URL}. Check VITE_API_URL.`); setLoading(false); }
+  };
+
+  const cancelScan = async () => {
+    setError(null);
+    setCancelling(true);
+    try {
+      const res = await fetch(`${API_URL}/cancel-scan`, {
+        method:"POST",
+        headers:{ "X-Api-Key":apiKey },
+      });
+      if (res.status === 401) { setError("Invalid API key. Enter your SCAN_API_KEY below."); setShowKeyInput(true); setCancelling(false); return; }
+      if (!res.ok) { const b = await res.json().catch(()=>{}); setError(b?.detail||`Server error ${res.status}`); setCancelling(false); return; }
+      const json = await res.json().catch(() => ({}));
+      if (json?.status === "idle") {
+        stopPolling();
+        await fetchResults();
+        return;
+      }
+      startPolling();
+    } catch(e) {
+      setError(`Cannot reach backend at ${API_URL}. Check VITE_API_URL.`);
+      setCancelling(false);
+    }
   };
 
   const triggerRefresh = async () => {
@@ -342,8 +370,30 @@ export default function App() {
           <div style={{ width:1, height:16, background:T.border }} />
           <span style={{ fontSize:10, color:T.textMuted, fontFamily:"monospace", letterSpacing:"0.06em" }}>OPTIONS SCANNER · US EQUITIES</span>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {data && <span style={{ fontSize:11, color:T.textMuted, fontFamily:"monospace" }}>{new Date(data.scan_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} ET · {data.scanned} scanned · {total} candidates</span>}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10, flexWrap:"wrap" }}>
+          {data && <span style={{ fontSize:11, color:T.textMuted, fontFamily:"monospace", textAlign:"right" }}>{new Date(data.scan_time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} ET · {data.scanned} scanned · {total} candidates</span>}
+          <button
+            onClick={cancelScan}
+            disabled={!loading || cancelling}
+            style={{
+              background:(!loading || cancelling)?T.bgAlt:T.redBg,
+              color:(!loading || cancelling)?T.textFaint:T.red,
+              border:`1px solid ${(!loading || cancelling)?T.border:T.redBord}`,
+              borderRadius:6,
+              cursor:(!loading || cancelling)?"not-allowed":"pointer",
+              padding:"8px 14px",
+              fontFamily:"monospace",
+              fontWeight:600,
+              fontSize:11,
+              letterSpacing:"0.06em",
+              display:"flex",
+              alignItems:"center",
+              gap:8,
+              boxShadow:"none",
+            }}
+          >
+            {cancelling ? <><div style={{ width:10, height:10, border:`1.5px solid ${T.redBord}`, borderTopColor:T.red, borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>CANCELLING...</> : "■ CANCEL SCAN"}
+          </button>
           <button onClick={triggerScan} disabled={loading} style={{ background:loading?T.bgAlt:T.text, color:loading?T.textMuted:T.white, border:`1px solid ${loading?T.border:T.text}`, borderRadius:6, cursor:loading?"not-allowed":"pointer", padding:"8px 18px", fontFamily:"monospace", fontWeight:600, fontSize:11, letterSpacing:"0.06em", display:"flex", alignItems:"center", gap:8, boxShadow:loading?"none":"0 1px 3px rgba(0,0,0,0.1)" }}>
             {loading ? <><div style={{ width:10, height:10, border:`1.5px solid ${T.borderMid}`, borderTopColor:T.textMid, borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>SCANNING...</> : "\u25B6 RUN SCAN"}
           </button>

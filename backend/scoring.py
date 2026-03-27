@@ -241,6 +241,15 @@ def _count_true(stocks: List[StockData], predicate) -> int:
     return sum(1 for s in stocks if predicate(s))
 
 
+def _funnel_counts(stocks: List[StockData], steps) -> Dict:
+    current = list(stocks)
+    counts = {}
+    for label, predicate in steps:
+        current = [s for s in current if predicate(s)]
+        counts[label] = len(current)
+    return counts
+
+
 def build_rsi_diagnostics(stocks: List[StockData]) -> Dict:
     weekly = [(s.ticker, s.weekly_rsi) for s in stocks if s.weekly_rsi is not None]
     daily = [(s.ticker, s.daily_rsi) for s in stocks if s.daily_rsi is not None]
@@ -300,6 +309,13 @@ def build_strategy_diagnostics(
             "support_pass": _count_true(stocks, lambda s: s.support is not None),
             "trend_pass": _count_true(stocks, lambda s: s.trend.get("above_200ma") is not False),
             "final_pass": _count_true(stocks, lambda s: score_long_call(s, p) is not None),
+            "funnel": _funnel_counts(stocks, [
+                ("global_gate", lambda s: _passes_gates(s, p)),
+                ("global_plus_rsi", lambda s: s.weekly_rsi is not None and s.weekly_rsi < lc_rsi_max),
+                ("global_plus_rsi_plus_ivr", lambda s: s.iv_rank is not None and s.iv_rank < lc_ivr_max),
+                ("global_plus_rsi_plus_ivr_plus_support", lambda s: s.support is not None),
+                ("final", lambda s: s.trend.get("above_200ma") is not False),
+            ]),
         },
         "short_calls": {
             "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
@@ -307,6 +323,12 @@ def build_strategy_diagnostics(
             "ivr_pass": _count_true(stocks, lambda s: s.iv_rank is not None and s.iv_rank > sc_ivr_min),
             "resistance_pass": _count_true(stocks, lambda s: s.resistance is not None),
             "final_pass": _count_true(stocks, lambda s: score_short_call(s, p) is not None),
+            "funnel": _funnel_counts(stocks, [
+                ("global_gate", lambda s: _passes_gates(s, p)),
+                ("global_plus_rsi", lambda s: s.weekly_rsi is not None and s.weekly_rsi > sc_rsi_min),
+                ("global_plus_rsi_plus_ivr", lambda s: s.iv_rank is not None and s.iv_rank > sc_ivr_min),
+                ("final", lambda s: s.resistance is not None),
+            ]),
         },
         "long_puts": {
             "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
@@ -315,6 +337,13 @@ def build_strategy_diagnostics(
             "resistance_pass": _count_true(stocks, lambda s: s.resistance is not None),
             "trend_pass": _count_true(stocks, lambda s: s.trend.get("above_50ma") is not True),
             "final_pass": _count_true(stocks, lambda s: score_long_put(s, p) is not None),
+            "funnel": _funnel_counts(stocks, [
+                ("global_gate", lambda s: _passes_gates(s, p)),
+                ("global_plus_rsi", lambda s: s.weekly_rsi is not None and s.weekly_rsi > lp_rsi_min),
+                ("global_plus_rsi_plus_ivr", lambda s: s.iv_rank is not None and s.iv_rank < lp_ivr_max),
+                ("global_plus_rsi_plus_ivr_plus_resistance", lambda s: s.resistance is not None),
+                ("final", lambda s: s.trend.get("above_50ma") is not True),
+            ]),
         },
         "short_puts": {
             "global_gate_pass": _count_true(stocks, lambda s: _passes_gates(s, p)),
@@ -323,6 +352,13 @@ def build_strategy_diagnostics(
             "support_pass": _count_true(stocks, lambda s: s.support is not None),
             "trend_pass": _count_true(stocks, lambda s: s.trend.get("above_200ma") is not False),
             "final_pass": _count_true(stocks, lambda s: score_short_put(s, p) is not None),
+            "funnel": _funnel_counts(stocks, [
+                ("global_gate", lambda s: _passes_gates(s, p)),
+                ("global_plus_rsi", lambda s: s.weekly_rsi is not None and s.weekly_rsi < sp_rsi_max),
+                ("global_plus_rsi_plus_ivr", lambda s: s.iv_rank is not None and s.iv_rank > sp_ivr_min),
+                ("global_plus_rsi_plus_ivr_plus_support", lambda s: s.support is not None),
+                ("final", lambda s: s.trend.get("above_200ma") is not False),
+            ]),
         },
     }
 

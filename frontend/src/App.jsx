@@ -445,17 +445,30 @@ export default function App() {
             </div>
             <div style={{ display:"flex", alignItems:"flex-start", gap:8, flexWrap:"wrap" }}>
               {/* Refresh Universe */}
-              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:6, minWidth:240 }}>
                 <button onClick={triggerRefresh} disabled={refreshing} style={{ padding:"5px 12px", borderRadius:5, cursor:refreshing?"not-allowed":"pointer", fontFamily:"monospace", fontSize:10, fontWeight:600, background:refreshing?T.bgAlt:T.blueBg, color:refreshing?T.textMuted:T.blue, border:`1px solid ${refreshing?T.border:T.blueBord}`, display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" }}>
                   {refreshing
                     ? <><div style={{ width:8, height:8, border:`1.5px solid ${T.borderMid}`, borderTopColor:T.blue, borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>REFRESHING...</>
                     : "\u21BB Refresh Universe"}
                 </button>
-                <span style={{ fontSize:8, color:T.textFaint, fontFamily:"monospace", maxWidth:210, lineHeight:1.4 }}>
-                  {refreshing && refreshProgress?.message
-                    ? `${refreshProgress.message}${typeof refreshProgress.percent === "number" ? ` (${refreshProgress.percent}%)` : ""}`
-                    : refreshMsg || "~15 min \u00B7 analyzes 5,000+ assets to redefine universe"}
-                </span>
+                {refreshing && refreshProgress
+                  ? <div style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:T.white, border:`1px solid ${T.blueBord}` }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:5, fontFamily:"monospace", fontSize:9, color:T.blue }}>
+                        <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {refreshProgress.stage === "stage1" ? "Stage 1" : refreshProgress.stage === "stage2" ? "Stage 2" : "Finishing"}
+                        </span>
+                        <span>{refreshProgress.percent ?? 0}%</span>
+                      </div>
+                      <div style={{ height:7, background:T.bgAlt, borderRadius:4, border:`1px solid ${T.border}`, overflow:"hidden" }}>
+                        <div style={{ width:`${refreshProgress.percent || 0}%`, height:"100%", background:T.blue, transition:"width 0.35s ease" }} />
+                      </div>
+                      <div style={{ marginTop:5, fontSize:8, color:T.textFaint, fontFamily:"monospace", lineHeight:1.35 }}>
+                        {refreshProgress.message}
+                      </div>
+                    </div>
+                  : <span style={{ fontSize:8, color:T.textFaint, fontFamily:"monospace", maxWidth:240, lineHeight:1.4 }}>
+                      {refreshMsg || "~15 min \u00B7 analyzes 5,000+ assets to redefine universe"}
+                    </span>}
               </div>
               {/* View Universe */}
               <button onClick={() => setShowUniverse(true)} style={{ padding:"5px 12px", borderRadius:5, cursor:"pointer", fontFamily:"monospace", fontSize:10, fontWeight:600, background:T.white, color:T.textMid, border:`1px solid ${T.border}`, whiteSpace:"nowrap" }}>

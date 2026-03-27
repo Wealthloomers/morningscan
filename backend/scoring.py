@@ -241,6 +241,39 @@ def _count_true(stocks: List[StockData], predicate) -> int:
     return sum(1 for s in stocks if predicate(s))
 
 
+def build_rsi_diagnostics(stocks: List[StockData]) -> Dict:
+    weekly = [(s.ticker, s.weekly_rsi) for s in stocks if s.weekly_rsi is not None]
+    daily = [(s.ticker, s.daily_rsi) for s in stocks if s.daily_rsi is not None]
+
+    weekly_values = sorted(val for _, val in weekly)
+    daily_values = sorted(val for _, val in daily)
+
+    def _median(values: List[float]) -> Optional[float]:
+        if not values:
+            return None
+        mid = len(values) // 2
+        if len(values) % 2:
+            return round(values[mid], 1)
+        return round((values[mid - 1] + values[mid]) / 2, 1)
+
+    def _examples(pairs: List, reverse: bool = False) -> List[Dict]:
+        ordered = sorted(pairs, key=lambda x: x[1], reverse=reverse)[:5]
+        return [{"ticker": ticker, "rsi": round(value, 1)} for ticker, value in ordered]
+
+    return {
+        "weekly_rsi_available": len(weekly),
+        "weekly_rsi_min": round(weekly_values[0], 1) if weekly_values else None,
+        "weekly_rsi_median": _median(weekly_values),
+        "weekly_rsi_max": round(weekly_values[-1], 1) if weekly_values else None,
+        "weekly_rsi_low_examples": _examples(weekly, reverse=False),
+        "weekly_rsi_high_examples": _examples(weekly, reverse=True),
+        "daily_rsi_available": len(daily),
+        "daily_rsi_min": round(daily_values[0], 1) if daily_values else None,
+        "daily_rsi_median": _median(daily_values),
+        "daily_rsi_max": round(daily_values[-1], 1) if daily_values else None,
+    }
+
+
 def build_strategy_diagnostics(
     stocks: List[StockData],
     params: Optional[Dict] = None,
@@ -305,5 +338,6 @@ def build_all_lists(
         "long_puts": _rank(stocks, score_long_put, p),
         "short_puts": _rank(stocks, score_short_put, p),
         "strategy_diagnostics": build_strategy_diagnostics(stocks, p),
+        "rsi_diagnostics": build_rsi_diagnostics(stocks),
         "scanned": len(stocks),
     }

@@ -213,29 +213,37 @@ async def _get_ticker_snapshot(
     session: aiohttp.ClientSession,
     ticker:  str,
 ) -> Dict:
-    """Get current price and 30-day average dollar volume for a single ticker."""
-    url  = f"{POLYGON_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/{ticker}"
-    data = await _get(session, url)
-    snap = data.get("ticker", {})
-    if not snap:
+    """Get latest price and 30-trading-day average dollar volume for a single ticker."""
+    date_to = datetime.utcnow().date()
+    date_from = date_to - timedelta(days=60)
+    url = f"{POLYGON_BASE}/v2/aggs/ticker/{ticker}/range/1/day/{date_from.isoformat()}/{date_to.isoformat()}"
+    data = await _get(session, url, {"adjusted": "true", "sort": "desc", "limit": 60})
+    bars = data.get("results", []) or []
+    if not bars:
         return {}
 
-    day   = snap.get("day",   {}) or {}
-    prevd = snap.get("prevDay", {}) or {}
+    valid_bars = []
+    for bar in bars:
+        volume = bar.get("v", 0) or 0
+        vwap = bar.get("vw") or bar.get("c") or 0
+        close = bar.get("c") or 0
+        if volume <= 0 or close <= 0:
+            continue
+        valid_bars.append({
+            "close": float(close),
+            "dollar_vol": float(volume) * float(vwap),
+        })
 
-    # Current price: use day close, fallback to prevDay close
-    price = day.get("c") or prevd.get("c") or 0
+    if not valid_bars:
+        return {}
 
-    # Dollar volume: day.vw * day.v for today, but we want 30-day avg
-    # Polygon snapshot gives today's volume; use as proxy
-    # For true 30-day avg, aggregate endpoint needed — use today as proxy
-    vol   = day.get("v",    0) or 0
-    vwap  = day.get("vw",   0) or 0
-    dollar_vol_today = vol * vwap
+    last_30 = valid_bars[:30]
+    avg_dollar_vol = sum(bar["dollar_vol"] for bar in last_30) / len(last_30)
+    price = last_30[0]["close"]
 
     return {
         "price":          float(price),
-        "dollar_vol_30d": float(dollar_vol_today),  # today as 30-day proxy
+        "dollar_vol_30d": float(avg_dollar_vol),
     }
 
 

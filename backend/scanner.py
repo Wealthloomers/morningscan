@@ -5,6 +5,7 @@ User-configurable params are passed through to polygon_client and scoring functi
 """
 
 import asyncio
+import inspect
 import aiohttp
 import logging
 import os
@@ -136,6 +137,7 @@ async def process_ticker(
 async def run_scan(
     tickers: Optional[List[str]] = None,
     params: Optional[Dict] = None,
+    progress_cb=None,
 ) -> Dict:
     """Run the full scan using the provided params."""
     if tickers is None:
@@ -149,11 +151,26 @@ async def run_scan(
 
     p = {**SCAN_DEFAULTS, **(params or {})}
 
+    async def emit_progress(payload: Dict) -> None:
+        if progress_cb is None:
+            return
+        result = progress_cb(payload)
+        if inspect.isawaitable(result):
+            await result
+
     logger.info(
         f"Scan started - {len(tickers)} tickers, "
         f"DTE {p['dte_min']}-{p['dte_max']}, "
         f"SR proximity {p['sr_proximity_pct']}%"
     )
+    await emit_progress({
+        "phase": "scan",
+        "percent": 0,
+        "processed": 0,
+        "total": len(tickers),
+        "valid": 0,
+        "message": f"Starting scan on {len(tickers)} tickers",
+    })
 
     results: List[StockData] = []
 
@@ -172,11 +189,27 @@ async def run_scan(
 
             pct = min(100, round((i + BATCH_SIZE) / len(tickers) * 100))
             logger.info(f"Progress {pct}% - {len(results)} valid so far")
+            await emit_progress({
+                "phase": "scan",
+                "percent": pct,
+                "processed": min(i + BATCH_SIZE, len(tickers)),
+                "total": len(tickers),
+                "valid": len(results),
+                "message": f"Progress {pct}% - {len(results)} valid so far",
+            })
 
             if i + BATCH_SIZE < len(tickers):
                 await asyncio.sleep(BATCH_DELAY)
 
     logger.info(f"Scan complete - {len(results)} tickers processed")
+    await emit_progress({
+        "phase": "scan",
+        "percent": 100,
+        "processed": len(tickers),
+        "total": len(tickers),
+        "valid": len(results),
+        "message": f"Scan complete - {len(results)} valid stocks",
+    })
 
     output = build_all_lists(results, params=p)
     output["diagnostics"] = {

@@ -15,6 +15,7 @@ Compatible with Python 3.9+.
 import os
 import json
 import asyncio
+import inspect
 import aiohttp
 import logging
 from datetime import datetime, timedelta
@@ -111,6 +112,7 @@ async def stage1_screen(
     min_market_cap_b: float,
     min_dollar_vol_m: float,
     min_price:        float,
+    progress_cb=None,
 ) -> List[Dict]:
     """
     Stage 1: Pull all US stocks meeting market cap, price, and volume thresholds.
@@ -122,10 +124,24 @@ async def stage1_screen(
     cursor         = None
     page           = 0
 
+    async def emit_progress(payload: Dict) -> None:
+        if progress_cb is None:
+            return
+        result = progress_cb(payload)
+        if inspect.isawaitable(result):
+            await result
+
     logger.info(
         f"Stage 1: screening market cap>${min_market_cap_b}B, "
         f"price>${min_price}, vol>${min_dollar_vol_m}M/day"
     )
+    await emit_progress({
+        "stage": "stage1",
+        "percent": 0,
+        "qualified": 0,
+        "candidates": 0,
+        "message": "Stage 1 starting",
+    })
 
     while True:
         data   = await _fetch_screener_page(session, min_market_cap, min_price, cursor)
@@ -203,6 +219,13 @@ async def stage1_screen(
             f"Stage 1 volume check {pct}%: "
             f"{len(qualified)} qualified so far"
         )
+        await emit_progress({
+            "stage": "stage1",
+            "percent": pct,
+            "qualified": len(qualified),
+            "candidates": len(candidates),
+            "message": f"Stage 1 volume check {pct}%: {len(qualified)} qualified so far",
+        })
         await asyncio.sleep(0.5)
 
     logger.info(f"Stage 1 final: {len(qualified)} tickers pass all Stage 1 filters")
@@ -302,6 +325,7 @@ async def stage2_options_filter(
     candidates:   List[Dict],
     min_iv_pct:   float,
     universe_size: int,
+    progress_cb=None,
 ) -> List[str]:
     """
     Stage 2: For each Stage 1 candidate, fetch options chain.
@@ -313,6 +337,21 @@ async def stage2_options_filter(
         f"Stage 2: options IV + volume check on {len(candidates)} tickers "
         f"(IV>{min_iv_pct}%, top {universe_size})"
     )
+
+    async def emit_progress(payload: Dict) -> None:
+        if progress_cb is None:
+            return
+        result = progress_cb(payload)
+        if inspect.isawaitable(result):
+            await result
+
+    await emit_progress({
+        "stage": "stage2",
+        "percent": 0,
+        "qualified": 0,
+        "candidates": len(candidates),
+        "message": f"Stage 2 starting on {len(candidates)} tickers",
+    })
 
     results    = []
     batch_size = 20
@@ -344,6 +383,13 @@ async def stage2_options_filter(
         logger.info(
             f"Stage 2 {pct}%: {len(results)} pass IV filter so far"
         )
+        await emit_progress({
+            "stage": "stage2",
+            "percent": pct,
+            "qualified": len(results),
+            "candidates": len(candidates),
+            "message": f"Stage 2 {pct}%: {len(results)} pass IV filter so far",
+        })
         await asyncio.sleep(0.8)  # Polygon rate limit
 
     # Rank by options dollar volume descending, take top N
@@ -374,6 +420,7 @@ async def build_universe(params: Optional[Dict] = None) -> Dict:
     universe_size    = int(p.get("universe_size",                DEFAULT_PARAMS["universe_size"]))
 
     start = datetime.utcnow()
+    progress_cb = p.get("_progress_cb")
     logger.info(
         f"Universe build started — "
         f"mktcap>${min_market_cap_b}B, vol>${min_dollar_vol_m}M, "
@@ -382,14 +429,14 @@ async def build_universe(params: Optional[Dict] = None) -> Dict:
 
     async with aiohttp.ClientSession() as session:
         stage1 = await stage1_screen(
-            session, min_market_cap_b, min_dollar_vol_m, min_price
+            session, min_market_cap_b, min_dollar_vol_m, min_price, progress_cb=progress_cb
         )
         if not stage1:
             logger.error("Stage 1 returned no candidates — aborting")
             return {"error": "Stage 1 returned no candidates", "tickers": []}
 
         tickers = await stage2_options_filter(
-            session, stage1, min_iv_pct, universe_size
+            session, stage1, min_iv_pct, universe_size, progress_cb=progress_cb
         )
 
     elapsed = (datetime.utcnow() - start).total_seconds()
@@ -407,6 +454,17 @@ async def build_universe(params: Optional[Dict] = None) -> Dict:
         },
         "stage1_candidates": len(stage1),
     }
+
+    if progress_cb is not None:
+        cb_result = progress_cb({
+            "stage": "complete",
+            "percent": 100,
+            "qualified": len(tickers),
+            "candidates": len(stage1),
+            "message": f"Universe refresh complete - {len(tickers)} tickers",
+        })
+        if inspect.isawaitable(cb_result):
+            await cb_result
 
     # Cache to disk
     try:

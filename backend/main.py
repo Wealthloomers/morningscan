@@ -53,9 +53,11 @@ state = {
     "is_scanning":        False,
     "last_scan_error":    None,
     "scan_task":          None,
+    "scan_progress":      None,
     "is_refreshing":      False,
     "last_refresh_time":  None,
     "last_refresh_error": None,
+    "refresh_progress":   None,
 }
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -68,9 +70,20 @@ async def _run_scan_task(params: dict = None) -> None:
         return
     state["is_scanning"]     = True
     state["last_scan_error"] = None
+    state["scan_progress"]   = {
+        "phase": "scan",
+        "percent": 0,
+        "processed": 0,
+        "total": 0,
+        "valid": 0,
+        "message": "Scan queued",
+    }
     try:
+        def _scan_progress_update(payload: dict) -> None:
+            state["scan_progress"] = payload
+
         universe = get_universe()
-        result   = await run_scan(tickers=universe, params=params)
+        result   = await run_scan(tickers=universe, params=params, progress_cb=_scan_progress_update)
         state["last_result"]    = result
         state["last_scan_time"] = datetime.now(timezone.utc).isoformat()
         logger.info(f"Scan complete — {result.get('scanned', 0)} tickers processed")
@@ -84,6 +97,8 @@ async def _run_scan_task(params: dict = None) -> None:
     finally:
         state["is_scanning"] = False
         state["scan_task"] = None
+        if state["scan_progress"] is not None:
+            state["scan_progress"]["active"] = False
 
 
 async def _run_universe_refresh(params: dict = None) -> None:
@@ -92,9 +107,19 @@ async def _run_universe_refresh(params: dict = None) -> None:
         return
     state["is_refreshing"]      = True
     state["last_refresh_error"] = None
+    state["refresh_progress"]   = {
+        "stage": "stage1",
+        "percent": 0,
+        "qualified": 0,
+        "candidates": 0,
+        "message": "Universe refresh queued",
+    }
     try:
+        def _refresh_progress_update(payload: dict) -> None:
+            state["refresh_progress"] = payload
+
         logger.info("Starting weekly universe refresh...")
-        result = await build_universe(params)
+        result = await build_universe({**(params or {}), "_progress_cb": _refresh_progress_update})
         state["last_refresh_time"] = datetime.now(timezone.utc).isoformat()
         logger.info(
             f"Universe refresh complete — "
@@ -106,6 +131,8 @@ async def _run_universe_refresh(params: dict = None) -> None:
         logger.error(f"Universe refresh failed: {e}")
     finally:
         state["is_refreshing"] = False
+        if state["refresh_progress"] is not None:
+            state["refresh_progress"]["active"] = False
 
 
 @asynccontextmanager
@@ -174,6 +201,8 @@ def status():
         "last_refresh_error":   state["last_refresh_error"],
         "universe_size":        len(universe),
         "universe_cache":       cache_meta,
+        "scan_progress":        state["scan_progress"],
+        "refresh_progress":     state["refresh_progress"],
     }
 
 

@@ -6,6 +6,7 @@ Endpoints:
   GET  /status             scan + universe status
   GET  /results            latest scan results
   POST /scan               trigger manual scan       (requires X-Api-Key)
+  POST /cancel-scan        cancel active scan        (requires X-Api-Key)
   POST /refresh-universe   trigger universe rebuild  (requires X-Api-Key)
 
 Scheduled jobs:
@@ -43,7 +44,7 @@ SCAN_API_KEY    = os.getenv("SCAN_API_KEY", "")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 if not SCAN_API_KEY:
-    logger.warning("SCAN_API_KEY not set — /scan and /refresh-universe are unprotected!")
+    logger.warning("SCAN_API_KEY not set — /scan, /cancel-scan, and /refresh-universe are unprotected!")
 
 # ── In-memory state ───────────────────────────────────────────────────────────
 state = {
@@ -51,6 +52,7 @@ state = {
     "last_scan_time":     None,
     "is_scanning":        False,
     "last_scan_error":    None,
+    "scan_task":          None,
     "is_refreshing":      False,
     "last_refresh_time":  None,
     "last_refresh_error": None,
@@ -72,11 +74,16 @@ async def _run_scan_task(params: dict = None) -> None:
         state["last_result"]    = result
         state["last_scan_time"] = datetime.now(timezone.utc).isoformat()
         logger.info(f"Scan complete — {result.get('scanned', 0)} tickers processed")
+    except asyncio.CancelledError:
+        state["last_scan_error"] = "Scan cancelled by user"
+        logger.info("Scan cancelled by user")
+        raise
     except Exception as e:
         state["last_scan_error"] = str(e)
         logger.error(f"Scan failed: {e}")
     finally:
         state["is_scanning"] = False
+        state["scan_task"] = None
 
 
 async def _run_universe_refresh(params: dict = None) -> None:
@@ -210,8 +217,21 @@ async def trigger_scan(
     _check_key(x_api_key)
     if state["is_scanning"]:
         return {"status": "already_running", "message": "A scan is already in progress"}
-    asyncio.create_task(_run_scan_task(params=params))
+    state["scan_task"] = asyncio.create_task(_run_scan_task(params=params))
     return {"status": "started", "message": "Scan started. Poll /results every few seconds."}
+
+
+@app.post("/cancel-scan")
+async def cancel_scan(
+    x_api_key: str = Header(default=""),
+):
+    """Cancel an in-progress scan. Protected by X-Api-Key header."""
+    _check_key(x_api_key)
+    task = state.get("scan_task")
+    if not state["is_scanning"] or task is None or task.done():
+        return {"status": "idle", "message": "No scan is currently running."}
+    task.cancel()
+    return {"status": "cancelling", "message": "Scan cancellation requested. Poll /status or /results to confirm."}
 
 
 @app.post("/refresh-universe")

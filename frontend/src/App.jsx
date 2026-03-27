@@ -228,6 +228,7 @@ export default function App() {
   const [saved, setSaved] = useState({...FACTORY_DEFAULTS});
   const [params, setParams] = useState({...FACTORY_DEFAULTS});
   const [data, setData] = useState(null);
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState(null);
@@ -252,14 +253,27 @@ export default function App() {
 
   useEffect(() => { fetchResults(); }, []);
 
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/status`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setStatus(json);
+      setLoading(Boolean(json?.is_scanning));
+      setRefreshing(Boolean(json?.is_refreshing));
+      if (!json?.is_scanning) setCancelling(false);
+      return json;
+    } catch(e) {}
+  };
+
+  useEffect(() => { fetchStatus(); }, []);
+
   const fetchResults = async () => {
     try {
       const res = await fetch(`${API_URL}/results`);
       if (!res.ok) return;
       const json = await res.json();
       if (json.status === "ok") setData(json);
-      setLoading(Boolean(json?.is_scanning));
-      if (!json?.is_scanning) setCancelling(false);
       return json;
     } catch(e) {}
   };
@@ -273,8 +287,8 @@ export default function App() {
   const startPolling = () => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
-      const json = await fetchResults();
-      if (json?.status === "ok" && !json?.is_scanning) {
+      const [json, stat] = await Promise.all([fetchResults(), fetchStatus()]);
+      if (stat && !stat.is_scanning) {
         stopPolling();
         setParamsOpen(false);
       }
@@ -331,8 +345,7 @@ export default function App() {
       setRefreshMsg(json.message || "Universe refresh started (~15 min).");
       const poll = setInterval(async () => {
         try {
-          const sr = await fetch(`${API_URL}/status`);
-          const sj = await sr.json();
+          const sj = await fetchStatus();
           if (!sj.is_refreshing) {
             clearInterval(poll); setRefreshing(false);
             const cnt = sj?.universe_cache?.count || 0;
@@ -346,6 +359,8 @@ export default function App() {
   useEffect(() => () => stopPolling(), []);
 
   const total = data ? ["long_calls","short_calls","long_puts","short_puts"].reduce((a,k)=>a+(data[k]?.length||0),0) : 0;
+  const scanProgress = status?.scan_progress;
+  const refreshProgress = status?.refresh_progress;
 
   return (
     <div style={{ minHeight:"100vh", background:T.bg, color:T.text }}>
@@ -437,7 +452,9 @@ export default function App() {
                     : "\u21BB Refresh Universe"}
                 </button>
                 <span style={{ fontSize:8, color:T.textFaint, fontFamily:"monospace", maxWidth:210, lineHeight:1.4 }}>
-                  {refreshMsg || "~15 min \u00B7 analyzes 5,000+ assets to redefine universe"}
+                  {refreshing && refreshProgress?.message
+                    ? `${refreshProgress.message}${typeof refreshProgress.percent === "number" ? ` (${refreshProgress.percent}%)` : ""}`
+                    : refreshMsg || "~15 min \u00B7 analyzes 5,000+ assets to redefine universe"}
                 </span>
               </div>
               {/* View Universe */}
@@ -499,8 +516,19 @@ export default function App() {
           <div style={{ background:T.white, border:`1px solid ${T.border}`, borderRadius:10, padding:"28px 24px", marginBottom:14 }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
               <div style={{ width:14, height:14, border:`2px solid ${T.border}`, borderTopColor:T.textMid, borderRadius:"50%", animation:"spin 0.9s linear infinite" }} />
-              <span style={{ fontSize:13, color:T.text, fontFamily:"monospace" }}>Scanning universe {"\u2014"} this takes 3{"\u2013"}5 minutes{"\u2026"}</span>
+              <span style={{ fontSize:13, color:T.text, fontFamily:"monospace" }}>{scanProgress?.message || "Scanning universe — this takes 3–5 minutes…"}</span>
             </div>
+            {scanProgress && (
+              <div style={{ marginBottom:18 }}>
+                <div style={{ height:8, background:T.bgAlt, borderRadius:4, border:`1px solid ${T.border}`, overflow:"hidden" }}>
+                  <div style={{ width:`${scanProgress.percent || 0}%`, height:"100%", background:T.text, transition:"width 0.35s ease" }} />
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:10, color:T.textMuted, fontFamily:"monospace", gap:10, flexWrap:"wrap" }}>
+                  <span>{scanProgress.percent || 0}% complete</span>
+                  <span>{scanProgress.processed || 0}/{scanProgress.total || 0} processed · {scanProgress.valid || 0} valid</span>
+                </div>
+              </div>
+            )}
             {LISTS.map((l,i) => (
               <div key={l.key} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
                 <span style={{ fontSize:10, width:68, flexShrink:0, fontFamily:"monospace", color:T.textMuted }}>{l.tag}</span>

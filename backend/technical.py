@@ -5,6 +5,7 @@ Each bar dict uses Polygon format: {o, h, l, c, v, t}
 Compatible with Python 3.9+.
 """
 
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 
 
@@ -31,6 +32,45 @@ def calculate_rsi(bars: List[Dict], period: int = 14) -> Optional[float]:
         return 100.0
     rs = avg_gain / avg_loss
     return round(100 - (100 / (1 + rs)), 2)
+
+
+def aggregate_weekly_bars_from_daily(daily_bars: List[Dict]) -> List[Dict]:
+    """Build weekly OHLCV bars from ascending daily bars using ISO calendar weeks."""
+    if not daily_bars:
+        return []
+
+    weekly: List[Dict] = []
+    current_key = None
+    current_bar = None
+
+    for bar in daily_bars:
+        bar_dt = datetime.fromtimestamp(bar["t"] / 1000, tz=timezone.utc)
+        week_key = bar_dt.isocalendar()[:2]
+
+        if week_key != current_key:
+            if current_bar is not None:
+                weekly.append(current_bar)
+            current_key = week_key
+            current_bar = {
+                "o": bar["o"],
+                "h": bar["h"],
+                "l": bar["l"],
+                "c": bar["c"],
+                "v": bar.get("v", 0) or 0,
+                "t": bar["t"],
+            }
+            continue
+
+        current_bar["h"] = max(current_bar["h"], bar["h"])
+        current_bar["l"] = min(current_bar["l"], bar["l"])
+        current_bar["c"] = bar["c"]
+        current_bar["v"] += bar.get("v", 0) or 0
+        current_bar["t"] = bar["t"]
+
+    if current_bar is not None:
+        weekly.append(current_bar)
+
+    return weekly
 
 
 # ── Moving averages ───────────────────────────────────────────────────────────

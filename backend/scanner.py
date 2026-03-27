@@ -13,11 +13,11 @@ from typing import Optional, List, Dict
 from datetime import datetime
 
 from polygon_client import (
-    get_daily_bars, get_weekly_bars, get_options_chain,
+    get_daily_bars, get_options_chain,
     get_iv_rank, get_options_liquidity, get_ticker_name,
 )
 from technical import (
-    calculate_rsi, get_trend,
+    calculate_rsi, aggregate_weekly_bars_from_daily, get_trend,
     get_nearest_support, get_nearest_resistance,
     has_wick_rejection, detect_unusual_activity,
     call_oi_skewed_at_resistance,
@@ -57,15 +57,16 @@ async def process_ticker(
 ) -> Optional[StockData]:
     """Fetch and process a single ticker using the provided params."""
     try:
-        daily_bars, weekly_bars, name = await asyncio.gather(
+        daily_bars, name = await asyncio.gather(
             get_daily_bars(session, ticker, days=365),
-            get_weekly_bars(session, ticker, weeks=52),
             get_ticker_name(session, ticker),
         )
 
         if not daily_bars or len(daily_bars) < 30:
             logger.debug(f"{ticker}: insufficient daily bars ({len(daily_bars) if daily_bars else 0})")
             return None
+
+        weekly_bars = aggregate_weekly_bars_from_daily(daily_bars)
 
         current_price = daily_bars[-1]["c"]
         if not current_price or current_price <= 0:
